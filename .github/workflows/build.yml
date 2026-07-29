@@ -1,0 +1,122 @@
+name: Build KernelSU Next for rubens (Redmi K50)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git curl wget build-essential flex bison bc \
+            libssl-dev libelf-dev libncurses-dev python3 cpio rsync \
+            gcc-aarch64-linux-gnu
+
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 -b rubens-s-oss \
+            https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel_src
+          cd kernel_src
+          git clone --depth=1 \
+            https://github.com/MiCode/MTK_kernel_modules.git \
+            -b rubens-s-oss kernel_modules
+
+      - name: Download toolchains
+        run: |
+          cd kernel_src
+          # Clang
+          mkdir -p clang
+          cd clang
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r487747c.tar.gz
+          if [ ! -s clang-r487747c.tar.gz ] || [ $(stat -c%s clang-r487747c.tar.gz) -lt 100000 ]; then
+            echo "AOSP Clang download failed, using Proton Clang..."
+            rm -f clang-r487747c.tar.gz
+            cd ..
+            rm -rf clang
+            git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+          else
+            tar xf clang-r487747c.tar.gz
+            rm clang-r487747c.tar.gz
+            cd ..
+          fi
+          # GCC 64-bit
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
+          # GCC 32-bit
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
+
+      - name: Integrate KernelSU Next (legacy)
+        run: |
+          cd kernel_src
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s legacy
+          echo "KernelSU Next integrated"
+
+      - name: Enable KSU configs
+        run: |
+          cd kernel_src
+          # Enable kprobes (required by KSU)
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KPROBES
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KPROBE_EVENTS
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable HAVE_KPROBES
+          # Enable KernelSU
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KSU
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KSU_KPROBE_HOOKS
+          # Show added configs
+          echo "=== Added configs ==="
+          grep -E "KSU|KPROBE" arch/arm64/configs/rubens_defconfig
+
+      - name: Build kernel
+        run: |
+          cd kernel_src
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CLANG_PATH=$(pwd)/clang/bin
+          export PATH="$CLANG_PATH:$PATH"
+          export CROSS_COMPILE=$(pwd)/gcc64/bin/aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=$(pwd)/gcc32/bin/arm-linux-androideabi-
+          
+          # Generate config
+          make O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            rubens_defconfig
+          
+          # Build
+          make O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            -j$(nproc) 2>&1 | tee build.log
+          
+          # Check result
+          if [ -f out/arch/arm64/boot/Image ]; then
+            echo "BUILD SUCCESS!"
+            ls -lh out/arch/arm64/boot/Image
+            # Also check for compressed versions
+            ls -lh out/arch/arm64/boot/Image.gz 2>/dev/null || echo "No Image.gz"
+            ls -lh out/arch/arm64/boot/Image.lz4 2>/dev/null || echo "No Image.lz4"
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            echo "BUILD SUCCESS (gzipped)!"
+            ls -lh out/arch/arm64/boot/Image.gz
+          else
+            echo "BUILD FAILED!"
+            tail -100 build.log
+            exit 1
+          fi
+
+      - name: Upload kernel Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: rubens-ksu-next-kernel
+          path: |
+            kernel_src/out/arch/arm64/boot/Image
+            kernel_src/out/arch/arm64/boot/Image.gz
+            kernel_src/build.log
+          if-no-files-found: error

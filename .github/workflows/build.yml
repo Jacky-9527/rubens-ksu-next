@@ -85,6 +85,10 @@ jobs:
           find . -name Kbuild -exec sed -i 's/-Werror/-Wno-error/g' {} +
           echo "=== Stripped -Werror from all Makefiles/Kbuild ==="
           grep -r "Werror" drivers/ --include="Makefile" --include="Kbuild" | head -5 || echo "No -Werror remaining"
+          # Create stub headers for missing MTK proprietary files
+          echo '/* stub: disp_arr.h is MTK proprietary, not in open source */' > drivers/gpu/mediatek/ged/src/disp_arr.h
+          echo '/* stub: mtk_drm_arr.h is MTK proprietary, not in open source */' > drivers/gpu/drm/mediatek/mediatek_v2/mtk_drm_arr.h 2>/dev/null || mkdir -p drivers/gpu/drm/mediatek/mediatek_v2 && echo '/* stub */' > drivers/gpu/drm/mediatek/mediatek_v2/mtk_drm_arr.h
+          echo "=== Created stub headers ==="
 
       - name: Build kernel
         run: |

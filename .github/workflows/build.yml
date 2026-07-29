@@ -72,6 +72,18 @@ jobs:
           grep -E "KSU|KPROBE" arch/arm64/configs/rubens_defconfig
           echo "=== RPMB configs ==="
           grep -E "RPMB" arch/arm64/configs/rubens_defconfig
+          # Disable CONFIG_WERROR if present
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --disable WERROR
+
+      - name: Patch MTK kernel source
+        run: |
+          cd kernel_src
+          # MTK open-source drivers hardcode -Werror in their Makefiles
+          # Strip all -Werror flags so Clang doesn't fail on warnings
+          find . -name Makefile -exec sed -i 's/-Werror//g' {} +
+          find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
+          echo "=== Stripped -Werror from all Makefiles/Kbuild ==="
+          grep -r "Werror" drivers/ --include="Makefile" --include="Kbuild" | head -5 || echo "No -Werror remaining"
 
       - name: Build kernel
         run: |

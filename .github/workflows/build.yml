@@ -79,9 +79,10 @@ jobs:
         run: |
           cd kernel_src
           # MTK open-source drivers hardcode -Werror in their Makefiles
-          # Strip all -Werror flags so Clang doesn't fail on warnings
-          find . -name Makefile -exec sed -i 's/-Werror//g' {} +
-          find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
+          # Replace -Werror with -Wno-error so Clang doesn't fail on warnings
+          # (must not delete -Werror entirely, or -Werror=foo becomes =foo)
+          find . -name Makefile -exec sed -i 's/-Werror/-Wno-error/g' {} +
+          find . -name Kbuild -exec sed -i 's/-Werror/-Wno-error/g' {} +
           echo "=== Stripped -Werror from all Makefiles/Kbuild ==="
           grep -r "Werror" drivers/ --include="Makefile" --include="Kbuild" | head -5 || echo "No -Werror remaining"
 

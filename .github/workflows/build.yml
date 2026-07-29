@@ -97,10 +97,11 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu- \
             rubens_defconfig
           
-          # Build
+          # Build (MTK open source kernel has many warnings, disable -Werror)
           make O=out ARCH=arm64 \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
+            KCFLAGS="-Wno-error" \
             -j$(nproc) 2>&1 | tee build.log
           
           # Check result

@@ -95,6 +95,9 @@ jobs:
           # Patch ufshcd.h: provide devfreq_simple_ondemand_data stub if not defined
           sed -i '/#include <linux\/devfreq.h>/a #ifndef CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND\nstruct devfreq_simple_ondemand_data { unsigned int upthreshold; unsigned int downdifferential; };\n#endif' drivers/scsi/ufs/ufshcd.h
           echo "=== Patched ufshcd.h devfreq stub ==="
+          # Remove MTK custom proc_compat_ioctl field (not in standard proc_ops)
+          find drivers/misc/mediatek -name '*.c' -exec sed -i '/proc_compat_ioctl/d' {} +
+          echo "=== Removed proc_compat_ioctl ==="
 
       - name: Build kernel
         run: |

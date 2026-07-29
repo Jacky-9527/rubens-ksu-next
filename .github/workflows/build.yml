@@ -74,6 +74,9 @@ jobs:
           grep -E "RPMB" arch/arm64/configs/rubens_defconfig
           # Disable CONFIG_WERROR if present
           ./scripts/config --file arch/arm64/configs/rubens_defconfig --disable WERROR
+          # Enable DEVFREQ (UFS driver needs devfreq_simple_ondemand_data struct)
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable DEVFREQ
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable DEVFREQ_GOV_SIMPLE_ONDEMAND
 
       - name: Patch MTK kernel source
         run: |

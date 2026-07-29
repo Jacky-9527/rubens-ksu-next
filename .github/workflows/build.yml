@@ -33,25 +33,21 @@ jobs:
       - name: Download toolchains
         run: |
           cd kernel_src
-          # Clang
-          mkdir -p clang
-          cd clang
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r487747c.tar.gz
-          if [ ! -s clang-r487747c.tar.gz ] || [ $(stat -c%s clang-r487747c.tar.gz) -lt 100000 ]; then
-            echo "AOSP Clang download failed, using Proton Clang..."
-            rm -f clang-r487747c.tar.gz
-            cd ..
-            rm -rf clang
-            git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
-          else
-            tar xf clang-r487747c.tar.gz
-            rm clang-r487747c.tar.gz
-            cd ..
-          fi
-          # GCC 64-bit
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
+          # Download Proton Clang (pre-built, reliable)
+          echo "=== Downloading Proton Clang ==="
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+          echo "Proton Clang version:"
+          clang/bin/clang --version 2>/dev/null || echo "clang not found at clang/bin/"
+          ls clang/bin/ | head -20
+          # GCC 64-bit (from Linaro mirror, not Google)
+          echo "=== Downloading GCC 64-bit ==="
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64 2>/dev/null || \
+          git clone --depth=1 https://github.com/arter97/arm64-gcc.git gcc64
           # GCC 32-bit
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
+          echo "=== Downloading GCC 32-bit ==="
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32 2>/dev/null || \
+          git clone --depth=1 https://github.com/arter97/arm32-gcc.git gcc32
+          echo "=== Toolchains ready ==="
 
       - name: Integrate KernelSU Next (legacy)
         run: |
@@ -83,6 +79,14 @@ jobs:
           export CROSS_COMPILE=$(pwd)/gcc64/bin/aarch64-linux-android-
           export CROSS_COMPILE_ARM32=$(pwd)/gcc32/bin/arm-linux-androideabi-
           
+          # Verify toolchain
+          echo "=== Clang version ==="
+          clang --version || echo "WARNING: clang not found"
+          echo "=== GCC version ==="
+          ${CROSS_COMPILE}gcc --version || echo "WARNING: gcc64 not found"
+          echo "=== GCC32 version ==="
+          ${CROSS_COMPILE_ARM32}gcc --version || echo "WARNING: gcc32 not found"
+          
           # Generate config
           make O=out ARCH=arm64 \
             CC=clang \
@@ -99,7 +103,6 @@ jobs:
           if [ -f out/arch/arm64/boot/Image ]; then
             echo "BUILD SUCCESS!"
             ls -lh out/arch/arm64/boot/Image
-            # Also check for compressed versions
             ls -lh out/arch/arm64/boot/Image.gz 2>/dev/null || echo "No Image.gz"
             ls -lh out/arch/arm64/boot/Image.lz4 2>/dev/null || echo "No Image.lz4"
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
@@ -107,6 +110,7 @@ jobs:
             ls -lh out/arch/arm64/boot/Image.gz
           else
             echo "BUILD FAILED!"
+            echo "=== Last 100 lines of build.log ==="
             tail -100 build.log
             exit 1
           fi

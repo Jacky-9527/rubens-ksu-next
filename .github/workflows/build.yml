@@ -65,8 +65,8 @@ jobs:
           # Enable KernelSU
           ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KSU
           ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KSU_KPROBE_HOOKS
-          # Disable broken MTK RPMB driver (missing mtk_mmc_host symbol)
-          ./scripts/config --file arch/arm64/configs/rubens_defconfig --disable MTK_RPMB
+          # Disable broken RPMB driver (missing mtk_mmc_host symbol)
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --disable RPMB
           # Show added configs
           echo "=== KSU/KPROBE configs ==="
           grep -E "KSU|KPROBE" arch/arm64/configs/rubens_defconfig

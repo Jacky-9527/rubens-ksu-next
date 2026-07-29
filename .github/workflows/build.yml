@@ -123,24 +123,64 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu- \
             rubens_defconfig
           
-          # Build (MTK open source kernel has many warnings, disable -Werror)
-          make O=out ARCH=arm64 \
-            CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            KCFLAGS="-Wno-error" \
-            -j$(nproc) 2>&1 | tee build.log
+          # Build with auto-stub creation for missing MTK proprietary headers
+          # The MTK open-source kernel is missing many proprietary headers;
+          # we auto-create empty stubs and retry until build succeeds or fails
+          # with a non-header error.
+          BUILD_SUCCESS=0
+          for attempt in $(seq 1 10); do
+            echo "=== Build attempt $attempt ==="
+            make O=out ARCH=arm64 \
+              CC=clang \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              KCFLAGS="-Wno-error" \
+              -j$(nproc) 2>&1 | tee -a build.log
+            
+            if [ -f out/arch/arm64/boot/Image ]; then
+              echo "BUILD SUCCESS!"
+              ls -lh out/arch/arm64/boot/Image
+              ls -lh out/arch/arm64/boot/Image.gz 2>/dev/null || echo "No Image.gz"
+              ls -lh out/arch/arm64/boot/Image.lz4 2>/dev/null || echo "No Image.lz4"
+              BUILD_SUCCESS=1
+              break
+            fi
+            
+            # Check for missing headers (fatal error: 'xxx.h' file not found)
+            missing=$(grep "fatal error:.*file not found" build.log | tail -20 | sed "s/.*fatal error: '\([^']*\)' file not found.*/\1/" | sort -u)
+            
+            if [ -z "$missing" ]; then
+              echo "BUILD FAILED (non-header error)!"
+              echo "=== Last 100 lines of build.log ==="
+              tail -100 build.log
+              exit 1
+            fi
+            
+            echo "=== Missing headers, creating stubs: ==="
+            for h in $missing; do
+              echo "  Stubbing: $h"
+              bn=$(basename "$h")
+              # Create stub in all common include directories
+              for dir in include include/linux drivers/misc/mediatek/include \
+                         drivers/misc/mediatek/masp/asfv2/asf_export_inc \
+                         drivers/misc/mediatek/ccci_util; do
+                if [ -d "$dir" ] && [ ! -f "$dir/$bn" ]; then
+                  echo "/* stub: $h - MTK proprietary */" > "$dir/$bn"
+                fi
+              done
+              # Also create next to the source file that includes it (for "xxx.h" includes)
+              src_file=$(grep -rl "#include.*$bn" drivers/ --include="*.c" --include="*.h" 2>/dev/null | head -1)
+              if [ -n "$src_file" ]; then
+                src_dir=$(dirname "$src_file")
+                if [ ! -f "$src_dir/$bn" ]; then
+                  echo "/* stub: $h */" > "$src_dir/$bn"
+                fi
+              fi
+            done
+            echo "=== Stubs created, retrying... ==="
+          done
           
-          # Check result
-          if [ -f out/arch/arm64/boot/Image ]; then
-            echo "BUILD SUCCESS!"
-            ls -lh out/arch/arm64/boot/Image
-            ls -lh out/arch/arm64/boot/Image.gz 2>/dev/null || echo "No Image.gz"
-            ls -lh out/arch/arm64/boot/Image.lz4 2>/dev/null || echo "No Image.lz4"
-          elif [ -f out/arch/arm64/boot/Image.gz ]; then
-            echo "BUILD SUCCESS (gzipped)!"
-            ls -lh out/arch/arm64/boot/Image.gz
-          else
-            echo "BUILD FAILED!"
+          if [ $BUILD_SUCCESS -eq 0 ]; then
+            echo "BUILD FAILED after all attempts!"
             echo "=== Last 100 lines of build.log ==="
             tail -100 build.log
             exit 1

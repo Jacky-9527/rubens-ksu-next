@@ -55,7 +55,7 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s legacy
           echo "KernelSU Next integrated"
 
-      - name: Enable KSU configs
+      - name: Enable KSU configs & fix broken drivers
         run: |
           cd kernel_src
           # Enable kprobes (required by KSU)
@@ -65,9 +65,13 @@ jobs:
           # Enable KernelSU
           ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KSU
           ./scripts/config --file arch/arm64/configs/rubens_defconfig --enable KSU_KPROBE_HOOKS
+          # Disable broken MTK RPMB driver (missing mtk_mmc_host symbol)
+          ./scripts/config --file arch/arm64/configs/rubens_defconfig --disable MTK_RPMB
           # Show added configs
-          echo "=== Added configs ==="
+          echo "=== KSU/KPROBE configs ==="
           grep -E "KSU|KPROBE" arch/arm64/configs/rubens_defconfig
+          echo "=== RPMB configs ==="
+          grep -E "RPMB" arch/arm64/configs/rubens_defconfig
 
       - name: Build kernel
         run: |
